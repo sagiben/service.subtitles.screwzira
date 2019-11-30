@@ -2,7 +2,7 @@
 import os
 import re
 import urllib
-import urllib2
+import urllib.request
 import unicodedata
 import json
 import zlib
@@ -16,79 +16,75 @@ __addon__ = xbmcaddon.Addon()
 __version__ = __addon__.getAddonInfo('version')  # Module version
 __scriptname__ = __addon__.getAddonInfo('name')
 __language__ = __addon__.getLocalizedString
-__profile__ = unicode(xbmc.translatePath(__addon__.getAddonInfo('profile')), 'utf-8')
-__temp__ = unicode(xbmc.translatePath(os.path.join(__profile__, 'temp', '')), 'utf-8')
+__profile__ = xbmc.translatePath(__addon__.getAddonInfo('profile'))
+__temp__ = xbmc.translatePath(os.path.join(__profile__, 'temp', ''))
 __kodi_version__ = xbmc.getInfoLabel('System.BuildVersion').split(' ')[0]
 
-regexHelper = re.compile('\W+', re.UNICODE)
+regexHelper = re.compile(r'\W+', re.UNICODE)
 
 
 # ===============================================================================
 # Private utility functions
 # ===============================================================================
 def normalizeString(str):
-    return unicodedata.normalize(
-        'NFKD', unicode(unicode(str, 'utf-8'))
-    ).encode('utf-8', 'ignore')
+    return unicodedata.normalize('NFKD', str).encode('utf-8', 'ignore')
 
 
 def clean_title(item):
-    title = os.path.splitext(os.path.basename(item["title"]))
-    tvshow = os.path.splitext(os.path.basename(item["tvshow"]))
+    title = os.path.splitext(os.path.basename(item['title'].decode("utf-8")))
+    tvshow = os.path.splitext(os.path.basename(item['tvshow'].decode("utf-8")))
 
     if len(title) > 1:
         if re.match(r'^\.[a-z]{2,4}$', title[1], re.IGNORECASE):
-            item["title"] = title[0]
+            item['title'] = title[0]
         else:
-            item["title"] = ''.join(title)
+            item['title'] = ''.join(title)
     else:
-        item["title"] = title[0]
+        item['title'] = title[0]
 
     if len(tvshow) > 1:
         if re.match(r'^\.[a-z]{2,4}$', tvshow[1], re.IGNORECASE):
-            item["tvshow"] = tvshow[0]
+            item['tvshow'] = tvshow[0]
         else:
-            item["tvshow"] = ''.join(tvshow)
+            item['tvshow'] = ''.join(tvshow)
     else:
-        item["tvshow"] = tvshow[0]
+        item['tvshow'] = tvshow[0]
 
-    item["title"] = unicode(item["title"], "utf-8")
-    item["tvshow"] = unicode(item["tvshow"], "utf-8")
     # Removes country identifier at the end
-    item["title"] = re.sub(r'\([^\)]+\)\W*$', '', item["title"]).strip()
-    item["tvshow"] = re.sub(r'\([^\)]+\)\W*$', '', item["tvshow"]).strip()
+    item['title'] = re.sub(r'\([^\)]+\)\W*$', '', item['title']).strip()
+    item['tvshow'] = re.sub(r'\([^\)]+\)\W*$', '', item['tvshow']).strip()
 
 
 def parse_rls_title(item):
-    title = regexHelper.sub(' ', item["title"])
-    tvshow = regexHelper.sub(' ', item["tvshow"])
+    title = regexHelper.sub(' ', item['title'])
+    tvshow = regexHelper.sub(' ', item['tvshow'])
 
-    groups = re.findall(r"(.*?) (\d{4})? ?(?:s|season|)(\d{1,2})(?:e|episode|x|\n)(\d{1,2})", title, re.I)
+    groups = re.findall(r'(.*?) (\d{4})? ?(?:s|season|)(\d{1,2})(?:e|episode|x|\n)(\d{1,2})', title, re.I)
 
     if len(groups) == 0:
-        groups = re.findall(r"(.*?) (\d{4})? ?(?:s|season|)(\d{1,2})(?:e|episode|x|\n)(\d{1,2})", tvshow, re.I)
+        groups = re.findall(r'(.*?) (\d{4})? ?(?:s|season|)(\d{1,2})(?:e|episode|x|\n)(\d{1,2})', tvshow, re.I)
 
     if len(groups) > 0 and len(groups[0]) >= 3:
         title, year, season, episode = groups[0]
-        item["year"] = str(int(year)) if len(year) == 4 else year
+        item['year'] = str(int(year)) if len(year) == 4 else year
 
-        item["tvshow"] = regexHelper.sub(' ', title).strip()
-        item["season"] = str(int(season))
-        item["episode"] = str(int(episode))
-        log("TV Parsed Item: %s" % (item,))
+        item['tvshow'] = regexHelper.sub(' ', title).strip()
+        item['season'] = str(int(season))
+        item['episode'] = str(int(episode))
+        log('TV Parsed Item: %s' % (item,))
 
     else:
-        groups = re.findall(r"(.*?)(\d{4})", item["title"], re.I)
+        groups = re.findall(r'(.*?)(\d{4})', item['title'], re.I)
         if len(groups) > 0 and len(groups[0]) >= 1:
             title = groups[0][0]
-            item["title"] = regexHelper.sub(' ', title).strip()
-            item["year"] = groups[0][1] if len(groups[0]) == 2 else item["year"]
+            item['title'] = regexHelper.sub(' ', title).strip()
+            item['year'] = groups[0][1] if len(groups[0]) == 2 else item['year']
 
             log("MOVIE Parsed Item: %s" % (item,))
 
 
 def log(msg):
-    xbmc.log((u"### [%s] - %s" % (__scriptname__, msg,)).encode('utf-8'), level=xbmc.LOGDEBUG)
+    xbmc.log("### [%s] - %s" % (__scriptname__, msg), level=xbmc.LOGDEBUG)
 
 
 def notify(msg_id):
@@ -109,35 +105,39 @@ class SubsHelper:
 
     # return list of movies / tv-series from the site`s search
     def _search(self, item):
-        search_string = re.split(r'\s\(\w+\)$', item["tvshow"])[0] if item["tvshow"] else item["title"]
+        search_string = re.split(r'\s\(\w+\)$', item['tvshow'])[0] if item['tvshow'] else item['title']
         log("search_string: %s" % search_string)
 
-        query = {"SearchPhrase": search_string.encode("utf-8"), "Version": "1.0"}
-        if item["tvshow"]:
-            query["SearchType"] = "FilmName"
-            query["Season"] = item["season"]
-            query["Episode"] = item["episode"]
+        query = {
+            'SearchPhrase': search_string,
+            'Version': '1.0'
+        }
+
+        if item['tvshow']:
+            query['SearchType'] = "FilmName"
+            query['Season'] = item['season']
+            query['Episode'] = item['episode']
             path = "FindSeries"
         else:
-            query["SearchType"] = "FilmName"
+            query['SearchType'] = "FilmName"
             path = "FindFilm"
             if item["year"]:
-                query["Year"] = item["year"]
+                query['Year'] = item['year']
 
-        search_result = self.urlHandler.request(self.BASE_URL + path, data={"request": query})
+        search_result = self.urlHandler.request(self.BASE_URL + path, data={'request': query})
 
         results = []
 
-        if search_result is not None and search_result["IsSuccess"] is False:
+        if search_result is not None and search_result['IsSuccess'] is False:
             notify(32001)
             return results
 
         log("Results: %s" % search_result)
 
-        if search_result is None or search_result["IsSuccess"] is False or len(search_result["Results"]) == 0:
+        if search_result is None or search_result['IsSuccess'] is False or len(search_result['Results']) == 0:
             return results  # return empty set
 
-        results += [{"name": search_string, "subs": {"he": search_result["Results"]}}]
+        results += [{'name': search_string, 'subs': {'he': search_result['Results']}}]
 
         log("Subtitles: %s" % results)
 
@@ -146,21 +146,21 @@ class SubsHelper:
     def _build_subtitle_list(self, search_results, item):
         ret = []
         for result in search_results:
-            subs_list = result["subs"]
+            subs_list = result['subs']
 
             if subs_list is not None:
                 for language in subs_list.keys():
-                    if xbmc.convertLanguage(language, xbmc.ISO_639_2) in item["3let_language"]:
+                    if xbmc.convertLanguage(language, xbmc.ISO_639_2) in item['3let_language']:
                         for current in subs_list[language]:
-                            title = current["SubtitleName"]
-                            subtitle_rate = self._calc_rating(title, item["file_original_path"])
+                            title = current['SubtitleName']
+                            subtitle_rate = self._calc_rating(title, item['file_original_path'])
 
-                            ret.append({'lang_index': item["3let_language"].index(
+                            ret.append({'lang_index': item['3let_language'].index(
                                 xbmc.convertLanguage(language, xbmc.ISO_639_2)),
                                 'filename': title,
                                 'language_name': xbmc.convertLanguage(language, xbmc.ENGLISH_NAME),
                                 'language_flag': language,
-                                'id': current["Identifier"],
+                                'id': current['Identifier'],
                                 'rating': '5',
                                 'sync': subtitle_rate >= 3.8,
                                 'hearing_imp': False,
@@ -196,13 +196,13 @@ class SubsHelper:
         return round(rating, 1)
 
     def download(self, id, language, filename):
-        ## Cleanup temp dir, we recomend you download/unzip your subs in temp folder and
-        ## pass that to XBMC to copy and activate
+        # Cleanup temp dir, we recommend you download/unzip your subs in temp folder and
+        # pass that to XBMC to copy and activate
         if xbmcvfs.exists(__temp__):
             shutil.rmtree(__temp__)
         xbmcvfs.mkdirs(__temp__)
 
-        query = {"request": {"subtitleID": id}}
+        query = {'request': {'subtitleID': id}}
 
         f = self.urlHandler.request(self.BASE_URL + "Download", query)
 
@@ -211,9 +211,9 @@ class SubsHelper:
         subFile.close()
 
 
-class URLHandler():
+class URLHandler:
     def __init__(self):
-        self.opener = urllib2.build_opener()
+        self.opener = urllib.request.build_opener()
         self.opener.addheaders = [('Accept-Encoding', 'gzip'),
                                   ('Accept-Language', 'en-us,en;q=0.5'),
                                   ('Pragma', 'no-cache'),
@@ -225,7 +225,7 @@ class URLHandler():
 
     def request(self, url, data=None, query_string=None, referrer=None, cookie=None):
         if data is not None:
-            data = json.dumps(data)
+            data = json.dumps(data).encode('utf8')
         if query_string is not None:
             url += '?' + urllib.urlencode(query_string)
         if referrer is not None:
@@ -234,11 +234,11 @@ class URLHandler():
             self.opener.addheaders += [('Cookie', cookie)]
 
         content = None
-        log("Getting url: %s" % (url))
+        log("Getting url: %s" % url)
         if data is not None:
-            log("Post Data: %s" % (data))
+            log("Post Data: %s" % data)
         try:
-            req = urllib2.Request(url, data, headers={'Content-Type': 'application/json'})
+            req = urllib.request.Request(url, data, headers={'Content-Type': 'application/json'})
             response = self.opener.open(req)
             content = None if response.code != 200 else response.read()
 
